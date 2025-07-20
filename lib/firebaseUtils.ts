@@ -135,3 +135,6 @@ export const getDistanceInMeters = (
 
   return R * c; // Distancia en metros
 };
+
+// Alias para compatibilidad con el tracking
+export const calculateDistance = getDistanceInMeters;
