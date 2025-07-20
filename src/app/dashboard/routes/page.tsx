@@ -1,10 +1,11 @@
 // src/app/dashboard/routes/page.tsx
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../../../../lib/useAuth';
 import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
+import { saveRoute, getUserRoutes, SafeRoute } from '../../../../lib/firebaseUtils';
 
 // Importar MapComponent dinámicamente para evitar problemas de SSR
 const MapComponent = dynamic(() => import('../../../components/MapComponent'), {
@@ -23,13 +24,33 @@ interface RoutePoint {
 }
 
 export default function RoutesPage() {
-  const { user, loading } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const [isCreatingRoute, setIsCreatingRoute] = useState(false);
   const [routeName, setRouteName] = useState('');
   const [currentRoute, setCurrentRoute] = useState<RoutePoint[]>([]);
+  const [savedRoutes, setSavedRoutes] = useState<SafeRoute[]>([]);
+  const [routesLoading, setRoutesLoading] = useState(true);
 
-  if (loading) {
+  // Cargar rutas existentes
+  useEffect(() => {
+    const loadRoutes = async () => {
+      if (user) {
+        try {
+          const routes = await getUserRoutes(user.uid);
+          setSavedRoutes(routes);
+        } catch (error) {
+          console.error('Error cargando rutas:', error);
+        } finally {
+          setRoutesLoading(false);
+        }
+      }
+    };
+
+    loadRoutes();
+  }, [user]);
+
+  if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-lg">Cargando...</div>
@@ -62,20 +83,32 @@ export default function RoutesPage() {
       return;
     }
 
-    // TODO: Aquí guardaremos en Firebase
-    console.log('Guardando ruta:', {
-      name: routeName,
-      points: currentRoute,
-      userId: user.uid,
-      createdAt: new Date()
-    });
+    try {
+      const routeData = {
+        name: routeName,
+        userId: user!.uid,
+        points: currentRoute,
+        tolerance: 20, // 20 metros por defecto
+        active: true
+      };
 
-    alert(`Ruta "${routeName}" guardada exitosamente!`);
-    
-    // Limpiar formulario
-    setRouteName('');
-    setCurrentRoute([]);
-    setIsCreatingRoute(false);
+      const routeId = await saveRoute(routeData);
+      
+      alert(`Ruta "${routeName}" guardada exitosamente en Firebase!`);
+      
+      // Recargar la lista de rutas
+      const updatedRoutes = await getUserRoutes(user!.uid);
+      setSavedRoutes(updatedRoutes);
+      
+      // Limpiar formulario
+      setRouteName('');
+      setCurrentRoute([]);
+      setIsCreatingRoute(false);
+      
+    } catch (error) {
+      console.error('Error guardando ruta:', error);
+      alert('Error guardando la ruta. Intenta de nuevo.');
+    }
   };
 
   const handleCancelRoute = () => {
@@ -123,15 +156,42 @@ export default function RoutesPage() {
                 + Crear Nueva Ruta
               </button>
 
-              {/* Lista de rutas (vacía por ahora) */}
+              {/* Lista de rutas */}
               <div className="mt-8">
                 <h3 className="text-lg font-medium mb-4">Rutas Existentes</h3>
-                <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
-                  <p className="text-gray-500">No tienes rutas creadas aún.</p>
-                  <p className="text-gray-400 text-sm mt-2">
-                    Crea tu primera ruta para comenzar a usar el sistema de seguimiento.
-                  </p>
-                </div>
+                {savedRoutes.length === 0 ? (
+                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
+                    <p className="text-gray-500">No tienes rutas creadas aún.</p>
+                    <p className="text-gray-400 text-sm mt-2">
+                      Crea tu primera ruta para comenzar a usar el sistema de seguimiento.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {savedRoutes.map((route) => (
+                      <div key={route.id} className="bg-gray-50 rounded-lg p-4 border">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <h4 className="font-medium text-gray-900">{route.name}</h4>
+                            <p className="text-sm text-gray-600">
+                              {route.points.length} puntos • Tolerancia: {route.tolerance}m
+                            </p>
+                            <p className="text-xs text-gray-500">
+                              Creada: {route.createdAt.toLocaleDateString('es-ES')}
+                            </p>
+                          </div>
+                          <div className="flex space-x-2">
+                            <span className={`px-2 py-1 text-xs rounded-full ${
+                              route.active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                            }`}>
+                              {route.active ? 'Activa' : 'Inactiva'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>
