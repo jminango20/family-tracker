@@ -18,6 +18,10 @@ export default function Dashboard() {
     }
   }, [user, loading, router]);
 
+  const handleGoToRoutes = () => {
+    router.push('/dashboard/routes');
+  };
+
   const handleLogout = async () => {
     try {
       await signOut(auth);
@@ -71,7 +75,10 @@ export default function Dashboard() {
           <div className="bg-white rounded-lg shadow-md p-6">
             <h2 className="text-xl font-semibold mb-4 text-gray-900">Rutas Seguras</h2>
             <p className="text-gray-600 mb-4">Gestiona las rutas seguras para tu familia</p>
-            <button className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700">
+            <button 
+              onClick={handleGoToRoutes}
+              className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700"
+            >
               Crear Nueva Ruta
             </button>
             <div className="mt-4 text-sm text-gray-500">
