@@ -88,26 +88,31 @@ export default function RoutesPage() {
         name: routeName,
         userId: user!.uid,
         points: currentRoute,
-        tolerance: 20, // 20 metros por defecto
+        tolerance: 20,
         active: true
       };
 
+      // Guardar la ruta
       const routeId = await saveRoute(routeData);
+      console.log('✅ Ruta guardada con ID:', routeId);
       
-      alert(`Ruta "${routeName}" guardada exitosamente en Firebase!`);
+      // Mostrar éxito INMEDIATAMENTE
+      alert(`✅ Ruta "${routeData.name}" guardada exitosamente!`);
       
-      // Recargar la lista de rutas
-      const updatedRoutes = await getUserRoutes(user!.uid);
-      setSavedRoutes(updatedRoutes);
-      
-      // Limpiar formulario
+      // Limpiar formulario INMEDIATAMENTE
       setRouteName('');
       setCurrentRoute([]);
       setIsCreatingRoute(false);
       
-    } catch (error) {
-      console.error('Error guardando ruta:', error);
-      alert('Error guardando la ruta. Intenta de nuevo.');
+      // Recargar rutas de forma segura
+      console.log('🔄 Recargando lista de rutas...');
+      const updatedRoutes = await getUserRoutes(user!.uid);
+      setSavedRoutes(updatedRoutes);
+      console.log('✅ Lista actualizada con', updatedRoutes.length, 'rutas');
+      
+    } catch (error: unknown) {
+      console.error('❌ Error en el proceso:', error);
+      alert(`❌ Error: ${(error as Error)?.message || 'Error desconocido'}`);
     }
   };
 
@@ -138,8 +143,7 @@ export default function RoutesPage() {
       </div>
 
       {/* Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">        
         {!isCreatingRoute ? (
           // Vista principal - lista de rutas
           <div className="space-y-6">

@@ -31,15 +31,32 @@ export interface SafeRoute {
 // Guardar una nueva ruta
 export const saveRoute = async (routeData: Omit<SafeRoute, 'id' | 'createdAt'>) => {
   try {
-    const docRef = await addDoc(collection(db, 'routes'), {
-      ...routeData,
-      createdAt: new Date(),
-    });
+    console.log('🔄 Intentando guardar ruta:', routeData);
+    console.log('🔄 Database instance:', db);
     
-    console.log('Ruta guardada con ID:', docRef.id);
+    // Datos simplificados para test
+    const simplifiedData = {
+      name: routeData.name,
+      userId: routeData.userId,
+      points: routeData.points,
+      tolerance: routeData.tolerance,
+      active: routeData.active,
+      createdAt: new Date(),
+      timestamp: Date.now() // Backup timestamp
+    };
+    
+    console.log('🔄 Datos a guardar:', simplifiedData);
+    
+    const docRef = await addDoc(collection(db, 'routes'), simplifiedData);
+    
+    console.log('✅ Ruta guardada con ID:', docRef.id);
     return docRef.id;
   } catch (error) {
-    console.error('Error guardando ruta:', error);
+    console.error('❌ Error detallado guardando ruta:', error);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    console.error('❌ Error code:', (error as any)?.code);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    console.error('❌ Error message:', (error as any)?.message);
     throw error;
   }
 };
@@ -47,32 +64,39 @@ export const saveRoute = async (routeData: Omit<SafeRoute, 'id' | 'createdAt'>) 
 // Obtener rutas de un usuario
 export const getUserRoutes = async (userId: string): Promise<SafeRoute[]> => {
   try {
-    const q = query(
-      collection(db, 'routes'),
-      where('userId', '==', userId),
-      orderBy('createdAt', 'desc')
-    );
+    console.log('🔄 Obteniendo rutas para usuario:', userId);
+    
+    const routesRef = collection(db, 'routes');
+    const q = query(routesRef, where('userId', '==', userId));
     
     const querySnapshot = await getDocs(q);
     const routes: SafeRoute[] = [];
     
     querySnapshot.forEach((doc) => {
       const data = doc.data();
-      routes.push({
+      console.log('📄 Documento encontrado:', doc.id, data);
+      
+      const route: SafeRoute = {
         id: doc.id,
-        name: data.name,
-        userId: data.userId,
-        points: data.points,
-        tolerance: data.tolerance,
-        createdAt: data.createdAt.toDate(),
-        active: data.active,
-      });
+        name: data.name || 'Sin nombre',
+        userId: data.userId || userId,
+        points: Array.isArray(data.points) ? data.points : [],
+        tolerance: typeof data.tolerance === 'number' ? data.tolerance : 20,
+        createdAt: data.createdAt && data.createdAt.toDate ? data.createdAt.toDate() : new Date(),
+        active: typeof data.active === 'boolean' ? data.active : true,
+      };
+      
+      routes.push(route);
     });
     
+    routes.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    
+    console.log('✅ Rutas obtenidas exitosamente:', routes.length);
     return routes;
+    
   } catch (error) {
-    console.error('Error obteniendo rutas:', error);
-    throw error;
+    console.error('❌ Error obteniendo rutas:', error);
+    return [];
   }
 };
 
