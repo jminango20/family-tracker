@@ -1,7 +1,7 @@
 // src/app/login/page.tsx
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../../../lib/firebase';
 import { useRouter } from 'next/navigation';
@@ -18,9 +18,19 @@ export default function LoginPage() {
   const { user } = useAuth();
 
   // Si ya está autenticado, redirigir al dashboard
+  useEffect(() => {
+    if (user) {
+      router.push('/dashboard');
+    }
+  }, [user, router]);
+
+  // Si ya está autenticado, mostrar loading mientras redirige
   if (user) {
-    router.push('/dashboard');
-    return null;
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-lg">Redirigiendo al dashboard...</div>
+      </div>
+    );
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
