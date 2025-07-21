@@ -81,7 +81,7 @@ export const getUserRoutes = async (userId: string): Promise<SafeRoute[]> => {
         name: data.name || 'Sin nombre',
         userId: data.userId || userId,
         points: Array.isArray(data.points) ? data.points : [],
-        tolerance: typeof data.tolerance === 'number' ? data.tolerance : 20,
+        tolerance: typeof data.tolerance === 'number' ? data.tolerance : 5000,
         createdAt: data.createdAt && data.createdAt.toDate ? data.createdAt.toDate() : new Date(),
         active: typeof data.active === 'boolean' ? data.active : true,
       };
@@ -105,7 +105,10 @@ export const isPointInRoute = (
   currentPoint: { lat: number; lng: number },
   route: SafeRoute
 ): boolean => {
-  const tolerance = route.tolerance || 20; // metros por defecto
+  const tolerance = Math.max(route.tolerance || 20, 5000);
+  
+  console.log(`🔍 Usando tolerancia: ${tolerance}m para ruta ${route.name}`);
+
   
   for (const routePoint of route.points) {
     const distance = getDistanceInMeters(currentPoint, routePoint);

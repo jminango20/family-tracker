@@ -158,7 +158,7 @@ export default function MapComponent({ onRouteCreate, isCreatingRoute = false }:
       {/* Info de la ruta actual */}
       {routePoints.length > 0 && (
         <div className="bg-gray-50 p-3 rounded-lg">
-          <h4 className="font-medium mb-2">Puntos de la ruta:</h4>
+          <h4 className="font-medium text-gray-900">Puntos de la ruta:</h4>
           <div className="text-sm text-gray-600 space-y-1">
             {routePoints.map((point, index) => (
               <div key={index}>

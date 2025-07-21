@@ -2,9 +2,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { collection, addDoc } from 'firebase/firestore';
+import { collection, addDoc, doc, getDoc } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
-import { getUserRoutes, isPointInRoute, SafeRoute } from '../../../lib/firebaseUtils';
+import { getUserRoutes, isPointInRoute, SafeRoute, getDistanceInMeters } from '../../../lib/firebaseUtils';
 
 interface LocationData {
   lat: number;
@@ -23,6 +23,25 @@ export default function TrackingPage() {
   const [childName, setChildName] = useState('');
   const [parentUserId, setParentUserId] = useState('');
   const [isSetup, setIsSetup] = useState(false);
+  const [loading, setLoading] = useState(false); // NUEVO STATE
+
+  // NUEVA FUNCIÓN: Validar si el User ID existe
+  const validateParentUserId = async (userId: string): Promise<boolean> => {
+    try {
+      console.log('🔍 Validando User ID:', userId);
+      
+      // Verificar si tiene rutas creadas (si tiene rutas, es un padre válido)
+      const routes = await getUserRoutes(userId);
+      const isValid = routes.length > 0;
+      
+      console.log(isValid ? '✅ User ID válido' : '❌ User ID inválido');
+      return isValid;
+      
+    } catch (error) {
+      console.error('❌ Error validando User ID:', error);
+      return false;
+    }
+  };
 
   // Obtener ubicación del dispositivo
   const getCurrentLocation = (): Promise<{ lat: number; lng: number }> => {
@@ -67,42 +86,65 @@ export default function TrackingPage() {
 
   // Verificar si está en ruta segura
   const checkSafetyStatus = (location: { lat: number; lng: number }) => {
+    console.log('🔍 Verificando ubicación:', location);
+    console.log('🔍 Rutas disponibles:', safeRoutes.length);
+    
     if (safeRoutes.length === 0) {
+      console.log('❌ No hay rutas configuradas');
       setStatus('unknown');
       return null;
     }
 
     for (const route of safeRoutes) {
+      console.log(`🔍 Verificando ruta: ${route.name} (activa: ${route.active})`);
+      
       if (route.active && isPointInRoute(location, route)) {
+        console.log(`✅ DENTRO de la ruta: ${route.name}`);
         setStatus('safe');
         return route.name;
+      } else {
+        console.log(`❌ FUERA de la ruta: ${route.name}`);
+        
+        // DEBUGGING: Mostrar distancias a cada punto
+        for (let i = 0; i < route.points.length; i++) {
+          const point = route.points[i];
+          const distance = getDistanceInMeters(location, point);
+          console.log(`   📏 Distancia al ${point.name || `Punto ${i+1}`}: ${distance.toFixed(1)}m (tolerancia: ${route.tolerance}m)`);
+        }
       }
     }
 
+    console.log('❌ Fuera de todas las rutas');
     setStatus('warning');
     return null;
   };
 
   // Enviar ubicación a Firebase
-  const sendLocationToFirebase = async (locationData: LocationData) => {
-    try {
-      await addDoc(collection(db, 'tracking'), {
-        childName,
-        parentUserId,
-        location: {
-          lat: locationData.lat,
-          lng: locationData.lng,
-        },
-        timestamp: locationData.timestamp,
-        isInSafeRoute: locationData.isInSafeRoute,
-        nearestRoute: locationData.nearestRoute,
-        status: status,
-      });
-      console.log('✅ Ubicación enviada a Firebase');
-    } catch (error) {
-      console.error('❌ Error enviando ubicación:', error);
-    }
-  };
+const sendLocationToFirebase = async (locationData: LocationData) => {
+  try {
+    // Preparar datos sin valores undefined
+    const dataToSend = {
+      childName,
+      parentUserId,
+      location: {
+        lat: locationData.lat,
+        lng: locationData.lng,
+      },
+      timestamp: locationData.timestamp,
+      isInSafeRoute: locationData.isInSafeRoute,
+      status: status,
+      // Solo incluir nearestRoute si existe
+      ...(locationData.nearestRoute && { nearestRoute: locationData.nearestRoute })
+    };
+
+    console.log('📤 Enviando a Firebase:', dataToSend);
+
+    await addDoc(collection(db, 'tracking'), dataToSend);
+    console.log('✅ Ubicación enviada a Firebase');
+  } catch (error) {
+    console.error('❌ Error enviando ubicación:', error);
+  }
+};
 
   // Proceso principal de tracking
   const trackLocation = async () => {
@@ -118,7 +160,7 @@ export default function TrackingPage() {
         lng: location.lng,
         timestamp: new Date(),
         isInSafeRoute: status === 'safe',
-        nearestRoute: nearestRoute || undefined,
+        ...(nearestRoute && { nearestRoute })
       };
 
       setLocationHistory(prev => [locationData, ...prev.slice(0, 9)]); // Mantener últimas 10
@@ -154,10 +196,36 @@ export default function TrackingPage() {
     }
   }, [parentUserId]);
 
-  const handleSetup = () => {
-    if (childName.trim() && parentUserId.trim()) {
+  // FUNCIÓN HANDLESETUP ACTUALIZADA CON VALIDACIÓN
+  const handleSetup = async () => {
+    if (!childName.trim() || !parentUserId.trim()) {
+      alert('Por favor completa todos los campos');
+      return;
+    }
+
+    // Mostrar loading
+    setLoading(true);
+    
+    try {
+      // Validar que el User ID existe
+      const isValidParent = await validateParentUserId(parentUserId);
+      
+      if (!isValidParent) {
+        alert('❌ User ID inválido. Verifica que el código sea correcto y que el padre tenga rutas configuradas.');
+        setLoading(false);
+        return;
+      }
+      
+      // Si es válido, continuar
       setIsSetup(true);
-      loadSafeRoutes();
+      await loadSafeRoutes();
+      alert('✅ Configuración exitosa! Conectado con el padre.');
+      
+    } catch (error) {
+      console.error('Error en setup:', error);
+      alert('❌ Error al validar. Intenta de nuevo.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -188,7 +256,7 @@ export default function TrackingPage() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="bg-white rounded-lg shadow-md p-8 max-w-md w-full">
-          <h1 className="text-2xl font-bold text-center mb-6">Family Tracker</h1>
+          <h1 className="text-2xl font-bold text-center text-gray-900">Family Tracker</h1>
           <p className="text-gray-600 text-center mb-6">
             Configuración inicial para el seguimiento
           </p>
@@ -203,7 +271,7 @@ export default function TrackingPage() {
                 value={childName}
                 onChange={(e) => setChildName(e.target.value)}
                 placeholder="Ej: María, Juan, etc."
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-600 text-gray-900"
               />
             </div>
 
@@ -216,19 +284,20 @@ export default function TrackingPage() {
                 value={parentUserId}
                 onChange={(e) => setParentUserId(e.target.value)}
                 placeholder="Pídele este código a tu padre/madre"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-600 text-gray-900"
               />
               <p className="text-xs text-gray-500 mt-1">
                 El padre debe ir al Dashboard y copiar su User ID
               </p>
             </div>
 
+            {/* BOTÓN ACTUALIZADO CON LOADING */}
             <button
               onClick={handleSetup}
-              disabled={!childName.trim() || !parentUserId.trim()}
+              disabled={!childName.trim() || !parentUserId.trim() || loading}
               className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 disabled:opacity-50"
             >
-              Configurar Tracking
+              {loading ? '🔍 Verificando...' : 'Configurar Tracking'}
             </button>
           </div>
         </div>
@@ -253,7 +322,7 @@ export default function TrackingPage() {
         
         {/* Control de tracking */}
         <div className="bg-white rounded-lg shadow-md p-6">
-          <h2 className="text-lg font-semibold mb-4">Control de Seguimiento</h2>
+          <h2 className="text-lg font-medium text-gray-900">Control de Seguimiento</h2>
           
           <button
             onClick={toggleTracking}
@@ -276,7 +345,7 @@ export default function TrackingPage() {
         {/* Ubicación actual */}
         {currentLocation && (
           <div className="bg-white rounded-lg shadow-md p-6">
-            <h3 className="font-semibold mb-3">📍 Mi Ubicación Actual</h3>
+            <h3 className="font-bold mb-3 text-gray-900">📍 Mi Ubicación Actual</h3>
             <div className="text-sm text-gray-600 space-y-1">
               <p>Latitud: {currentLocation.lat.toFixed(6)}</p>
               <p>Longitud: {currentLocation.lng.toFixed(6)}</p>
@@ -286,12 +355,12 @@ export default function TrackingPage() {
 
         {/* Rutas seguras disponibles */}
         <div className="bg-white rounded-lg shadow-md p-6">
-          <h3 className="font-semibold mb-3">🛡️ Rutas Seguras ({safeRoutes.length})</h3>
+          <h3 className="font-semibold font-medium text-gray-900">🛡️ Rutas Seguras ({safeRoutes.length})</h3>
           {safeRoutes.length > 0 ? (
             <div className="space-y-2">
               {safeRoutes.map((route) => (
                 <div key={route.id} className="flex justify-between items-center p-2 bg-gray-50 rounded">
-                  <span className="text-sm">{route.name}</span>
+                  <span className="text-sm font-medium text-gray-500">{route.name}</span>
                   <span className={`text-xs px-2 py-1 rounded ${
                     route.active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
                   }`}>
@@ -308,11 +377,11 @@ export default function TrackingPage() {
         {/* Historial */}
         {locationHistory.length > 0 && (
           <div className="bg-white rounded-lg shadow-md p-6">
-            <h3 className="font-semibold mb-3">📋 Últimas Ubicaciones</h3>
+            <h3 className="font-medium text-gray-900">📋 Últimas Ubicaciones</h3>
             <div className="space-y-2 max-h-40 overflow-y-auto">
               {locationHistory.map((loc, index) => (
                 <div key={index} className="text-xs p-2 bg-gray-50 rounded">
-                  <div className="flex justify-between">
+                  <div className="flex justify-between font-medium text-gray-500">
                     <span>{loc.timestamp.toLocaleTimeString()}</span>
                     <span className={loc.isInSafeRoute ? 'text-green-600' : 'text-red-600'}>
                       {loc.isInSafeRoute ? '✅ Seguro' : '⚠️ Fuera'}

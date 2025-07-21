@@ -148,7 +148,7 @@ export default function RoutesPage() {
           // Vista principal - lista de rutas
           <div className="space-y-6">
             <div className="bg-white rounded-lg shadow-md p-6">
-              <h2 className="text-xl font-semibold mb-4">Mis Rutas Seguras</h2>
+              <h2 className="text-xl font-medium text-gray-900">Mis Rutas Seguras</h2>
               <p className="text-gray-600 mb-6">
                 Crea y gestiona las rutas seguras que tu familia debe seguir.
               </p>
@@ -162,7 +162,7 @@ export default function RoutesPage() {
 
               {/* Lista de rutas */}
               <div className="mt-8">
-                <h3 className="text-lg font-medium mb-4">Rutas Existentes</h3>
+                <h3 className="text-lg font-medium text-gray-900">Rutas Existentes</h3>
                 {savedRoutes.length === 0 ? (
                   <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
                     <p className="text-gray-500">No tienes rutas creadas aún.</p>
@@ -203,7 +203,7 @@ export default function RoutesPage() {
           // Vista de creación de ruta
           <div className="space-y-6">
             <div className="bg-white rounded-lg shadow-md p-6">
-              <h2 className="text-xl font-semibold mb-4">Crear Nueva Ruta</h2>
+              <h2 className="text-xl font-medium text-gray-700">Crear Nueva Ruta</h2>
               
               {/* Formulario de nombre */}
               <div className="mb-6">
@@ -216,7 +216,7 @@ export default function RoutesPage() {
                   value={routeName}
                   onChange={(e) => setRouteName(e.target.value)}
                   placeholder="Ej: Casa a Colegio, Casa a Guardería"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-600 text-gray-900 font-semibold text-base"
                 />
               </div>
 
