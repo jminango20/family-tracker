@@ -88,7 +88,7 @@ export default function RoutesPage() {
         name: routeName,
         userId: user!.uid,
         points: currentRoute,
-        tolerance: 20,
+        tolerance: 100,
         active: true
       };
 

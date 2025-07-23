@@ -105,7 +105,7 @@ export const isPointInRoute = (
   currentPoint: { lat: number; lng: number },
   route: SafeRoute
 ): boolean => {
-  const tolerance = Math.max(route.tolerance || 20, 5000);
+  const tolerance = Math.max(route.tolerance || 20, 1800);
   
   console.log(`🔍 Usando tolerancia: ${tolerance}m para ruta ${route.name}`);
 
