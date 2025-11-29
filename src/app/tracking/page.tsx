@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react';
 import { collection, addDoc, doc, getDoc } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
 import { getUserRoutes, isPointInRoute, SafeRoute, getDistanceInMeters } from '../../../lib/firebaseUtils';
+import { sendAlert, shouldSendAlert } from '../../../lib/emailAlerts';
 
 interface LocationData {
   lat: number;
@@ -24,6 +25,10 @@ export default function TrackingPage() {
   const [parentUserId, setParentUserId] = useState('');
   const [isSetup, setIsSetup] = useState(false);
   const [loading, setLoading] = useState(false); // NUEVO STATE
+  // AGREGAR ESTOS ESTADOS después de la línea 24 (después de [loading, setLoading]):
+const [parentEmail, setParentEmail] = useState('');
+const [previousStatus, setPreviousStatus] = useState<'safe' | 'warning' | 'unknown'>('unknown');
+
 
   // NUEVA FUNCIÓN: Validar si el User ID existe
   const validateParentUserId = async (userId: string): Promise<boolean> => {
@@ -85,39 +90,81 @@ export default function TrackingPage() {
   };
 
   // Verificar si está en ruta segura
-  const checkSafetyStatus = (location: { lat: number; lng: number }) => {
-    console.log('🔍 Verificando ubicación:', location);
-    console.log('🔍 Rutas disponibles:', safeRoutes.length);
-    
-    if (safeRoutes.length === 0) {
-      console.log('❌ No hay rutas configuradas');
-      setStatus('unknown');
-      return null;
-    }
+const checkSafetyStatus = async (location: { lat: number; lng: number }) => {
+  console.log('🔍 Verificando ubicación:', location);
+  console.log('🔍 Rutas disponibles:', safeRoutes.length);
+  
+  if (safeRoutes.length === 0) {
+    console.log('❌ No hay rutas configuradas');
+    setStatus('unknown');
+    return null;
+  }
 
-    for (const route of safeRoutes) {
-      console.log(`🔍 Verificando ruta: ${route.name} (activa: ${route.active})`);
+  let newStatus: 'safe' | 'warning' | 'unknown' = 'warning';
+  let activeRoute: string | null = null;
+
+  for (const route of safeRoutes) {
+    console.log(`🔍 Verificando ruta: ${route.name} (activa: ${route.active})`);
+    
+    if (route.active && isPointInRoute(location, route)) {
+      console.log(`✅ DENTRO de la ruta: ${route.name}`);
+      newStatus = 'safe';
+      activeRoute = route.name;
+      break;
+    } else {
+      console.log(`❌ FUERA de la ruta: ${route.name}`);
       
-      if (route.active && isPointInRoute(location, route)) {
-        console.log(`✅ DENTRO de la ruta: ${route.name}`);
-        setStatus('safe');
-        return route.name;
-      } else {
-        console.log(`❌ FUERA de la ruta: ${route.name}`);
+      // DEBUGGING: Mostrar distancias a cada punto
+      for (let i = 0; i < route.points.length; i++) {
+        const point = route.points[i];
+        const distance = getDistanceInMeters(location, point);
+        console.log(`   📏 Distancia al ${point.name || `Punto ${i+1}`}: ${distance.toFixed(1)}m (tolerancia: ${route.tolerance}m)`);
+      }
+    }
+  }
+
+  // NUEVA FUNCIONALIDAD: Detectar cambios de estado y enviar alertas
+  if (newStatus !== previousStatus && parentEmail) {
+    console.log(`🔄 Cambio de estado: ${previousStatus} → ${newStatus}`);
+    
+    // Solo enviar alerta si sale de ruta (safe → warning) o regresa (warning → safe)
+    if ((previousStatus === 'safe' && newStatus === 'warning') || 
+        (previousStatus === 'warning' && newStatus === 'safe')) {
+      
+      const alertType = newStatus === 'warning' ? 'exit_route' : 'enter_route';
+      
+      // Verificar cooldown para evitar spam
+      if (shouldSendAlert(childName, alertType)) {
+        console.log(`🚨 Enviando alerta: ${alertType}`);
         
-        // DEBUGGING: Mostrar distancias a cada punto
-        for (let i = 0; i < route.points.length; i++) {
-          const point = route.points[i];
-          const distance = getDistanceInMeters(location, point);
-          console.log(`   📏 Distancia al ${point.name || `Punto ${i+1}`}: ${distance.toFixed(1)}m (tolerancia: ${route.tolerance}m)`);
+        try {
+          await sendAlert({
+            childName,
+            parentEmail,
+            location,
+            timestamp: new Date(),
+            routeName: activeRoute || undefined,
+            alertType
+          });
+          console.log('✅ Alerta enviada exitosamente');
+        } catch (error) {
+          console.error('❌ Error enviando alerta:', error);
         }
       }
     }
+  }
 
+  // Actualizar estados
+  setPreviousStatus(newStatus);
+  setStatus(newStatus);
+  
+  if (newStatus === 'warning') {
     console.log('❌ Fuera de todas las rutas');
-    setStatus('warning');
     return null;
-  };
+  }
+  
+  return activeRoute;
+};
 
   // Enviar ubicación a Firebase
 const sendLocationToFirebase = async (locationData: LocationData) => {
@@ -153,7 +200,7 @@ const sendLocationToFirebase = async (locationData: LocationData) => {
       const location = await getCurrentLocation();
       setCurrentLocation(location);
 
-      const nearestRoute = checkSafetyStatus(location);
+      const nearestRoute = await checkSafetyStatus(location);
       
       const locationData: LocationData = {
         lat: location.lat,
@@ -198,7 +245,7 @@ const sendLocationToFirebase = async (locationData: LocationData) => {
 
   // FUNCIÓN HANDLESETUP ACTUALIZADA CON VALIDACIÓN
   const handleSetup = async () => {
-    if (!childName.trim() || !parentUserId.trim()) {
+    if (!childName.trim() || !parentUserId.trim() || !parentEmail.trim()) {
       alert('Por favor completa todos los campos');
       return;
     }
@@ -290,11 +337,27 @@ const sendLocationToFirebase = async (locationData: LocationData) => {
                 El padre debe ir al Dashboard y copiar su User ID
               </p>
             </div>
+            {/* AQUÍ VA EL CAMPO DE EMAIL */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Email del padre/madre
+              </label>
+              <input
+                type="email"
+                value={parentEmail}
+                onChange={(e) => setParentEmail(e.target.value)}
+                placeholder="padre@email.com"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-600 text-gray-900"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Para recibir alertas automáticas
+              </p>
+            </div>
 
             {/* BOTÓN ACTUALIZADO CON LOADING */}
             <button
               onClick={handleSetup}
-              disabled={!childName.trim() || !parentUserId.trim() || loading}
+              disabled={!childName.trim() || !parentUserId.trim() || !parentEmail.trim() || loading}
               className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 disabled:opacity-50"
             >
               {loading ? '🔍 Verificando...' : 'Configurar Tracking'}
